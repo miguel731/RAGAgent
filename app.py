@@ -909,6 +909,345 @@ def reset(response: Response, session_id: str = Cookie(default=None)):
     return {"session_id": new_id}
 
 
+@app.get("/admin", response_class=HTMLResponse)
+def admin_panel(_=Depends(require_admin)):
+    env = dotenv_values(ENV_FILE) if ENV_FILE.exists() else {}
+    provider_file = Path("vectorstore/provider.json")
+    current_embedding = "desconocido"
+    if provider_file.exists():
+        try:
+            current_embedding = json.loads(provider_file.read_text()).get("provider", "?")
+        except Exception:
+            pass
+
+    from agent import _get_provider, get_embedding_key
+    llm_now = _get_provider("LLM_PROVIDER")
+    emb_now = get_embedding_key()
+
+    def val(key, fallback=""):
+        return env.get(key, os.getenv(key, fallback))
+
+    return f"""<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin — MediSalud</title>
+  <style>
+    :root {{
+      --bg: #0A0F1C; --surface: #111827; --surface-2: #1a2236;
+      --border: rgba(255,255,255,0.07); --border-mid: rgba(255,255,255,0.12);
+      --cyan: #00D4FF; --cyan-dim: rgba(0,212,255,0.10); --cyan-glow: rgba(0,212,255,0.22);
+      --green: #10B981; --green-dim: rgba(16,185,129,0.12);
+      --red: #EF4444; --red-dim: rgba(239,68,68,0.12);
+      --yellow: #F59E0B; --yellow-dim: rgba(245,158,11,0.12);
+      --text-1: #F0F4FF; --text-2: #8B9CC8; --text-3: #4A5578;
+    }}
+    :root[data-theme="light"] {{
+      --bg: #F0F4FB; --surface: #fff; --surface-2: #E8EDF8;
+      --border: rgba(0,0,0,0.07); --border-mid: rgba(0,0,0,0.12);
+      --cyan: #0369A1; --cyan-dim: rgba(3,105,161,0.08); --cyan-glow: rgba(3,105,161,0.18);
+      --green: #059669; --green-dim: rgba(5,150,105,0.1);
+      --red: #DC2626; --red-dim: rgba(220,38,38,0.08);
+      --yellow: #D97706; --yellow-dim: rgba(217,119,6,0.1);
+      --text-1: #0F172A; --text-2: #475569; --text-3: #94A3B8;
+    }}
+    *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    body {{ font-family: system-ui, sans-serif; background: var(--bg); color: var(--text-1); min-height: 100vh; }}
+    header {{ background: var(--surface); border-bottom: 1px solid var(--border); padding: 16px 32px; display: flex; align-items: center; justify-content: space-between; }}
+    .logo {{ display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1rem; }}
+    .logo-icon {{ width: 30px; height: 30px; background: linear-gradient(135deg, var(--cyan), var(--green)); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-size: 0.8rem; font-weight: 900; }}
+    .badge {{ font-size: 0.68rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; background: var(--yellow-dim); color: var(--yellow); border: 1px solid var(--yellow); border-radius: 20px; padding: 2px 10px; }}
+    .theme-btn {{ background: transparent; border: 1px solid var(--border-mid); border-radius: 8px; padding: 6px 12px; color: var(--text-2); cursor: pointer; font-size: 0.8rem; }}
+    main {{ max-width: 860px; margin: 0 auto; padding: 32px 24px; display: flex; flex-direction: column; gap: 24px; }}
+    .card {{ background: var(--surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }}
+    .card-header {{ padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }}
+    .card-header h2 {{ font-size: 0.9rem; font-weight: 600; color: var(--text-1); }}
+    .card-header .icon {{ width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; }}
+    .card-body {{ padding: 24px; display: flex; flex-direction: column; gap: 16px; }}
+    .status-row {{ display: flex; flex-wrap: wrap; gap: 12px; }}
+    .stat {{ flex: 1; min-width: 160px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }}
+    .stat-label {{ font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-3); margin-bottom: 4px; }}
+    .stat-value {{ font-size: 0.95rem; font-weight: 600; color: var(--cyan); }}
+    .stat-value.green {{ color: var(--green); }}
+    .row {{ display: flex; flex-direction: column; gap: 6px; }}
+    label {{ font-size: 0.78rem; font-weight: 500; color: var(--text-2); }}
+    select, input[type=text], input[type=password] {{
+      width: 100%; padding: 9px 12px; background: var(--surface-2);
+      border: 1px solid var(--border-mid); border-radius: 10px;
+      color: var(--text-1); font-size: 0.875rem; font-family: inherit; outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }}
+    select:focus, input:focus {{ border-color: var(--cyan); box-shadow: 0 0 0 3px var(--cyan-glow); }}
+    .grid-2 {{ display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }}
+    @media (max-width: 600px) {{ .grid-2 {{ grid-template-columns: 1fr; }} }}
+    .btn {{ padding: 10px 20px; border: none; border-radius: 10px; font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: opacity 0.15s, transform 0.1s; display: inline-flex; align-items: center; gap: 8px; }}
+    .btn:active {{ transform: scale(0.97); }}
+    .btn-primary {{ background: linear-gradient(135deg, var(--cyan), #0099cc); color: white; }}
+    .btn-danger {{ background: var(--red-dim); color: var(--red); border: 1px solid var(--red); }}
+    .btn-secondary {{ background: var(--surface-2); color: var(--text-2); border: 1px solid var(--border-mid); }}
+    .btn:hover {{ opacity: 0.85; }}
+    .actions {{ display: flex; flex-wrap: wrap; gap: 10px; padding-top: 4px; }}
+    .divider {{ height: 1px; background: var(--border); margin: 4px 0; }}
+    .note {{ font-size: 0.75rem; color: var(--text-3); line-height: 1.5; }}
+    .note.warn {{ color: var(--yellow); background: var(--yellow-dim); border: 1px solid var(--yellow); border-radius: 8px; padding: 10px 12px; }}
+    .toast {{ position: fixed; bottom: 24px; right: 24px; background: var(--green); color: white; padding: 12px 20px; border-radius: 12px; font-size: 0.875rem; font-weight: 600; transform: translateY(80px); opacity: 0; transition: all 0.3s cubic-bezier(0.22,1,0.36,1); z-index: 999; }}
+    .toast.show {{ transform: translateY(0); opacity: 1; }}
+    .toast.error {{ background: var(--red); }}
+    a.back {{ color: var(--cyan); font-size: 0.8rem; text-decoration: none; }}
+    a.back:hover {{ text-decoration: underline; }}
+  </style>
+</head>
+<body>
+<header>
+  <div class="logo">
+    <div class="logo-icon">M</div>
+    MediSalud
+    <span class="badge">Admin</span>
+  </div>
+  <div style="display:flex;gap:10px;align-items:center;">
+    <a class="back" href="/">← Volver al chat</a>
+    <button class="theme-btn" onclick="toggleTheme()">☀️ / 🌙</button>
+  </div>
+</header>
+
+<main>
+  <!-- Estado actual -->
+  <div class="card">
+    <div class="card-header">
+      <div class="icon" style="background:var(--green-dim);color:var(--green);">⚡</div>
+      <h2>Estado del sistema</h2>
+    </div>
+    <div class="card-body">
+      <div class="status-row">
+        <div class="stat"><div class="stat-label">LLM activo</div><div class="stat-value">{llm_now}</div></div>
+        <div class="stat"><div class="stat-label">Embeddings activos</div><div class="stat-value">{emb_now}</div></div>
+        <div class="stat"><div class="stat-label">Vectorstore en disco</div><div class="stat-value green">{current_embedding}</div></div>
+        <div class="stat"><div class="stat-label">Sesiones activas</div><div class="stat-value green">{len(_sessions)}</div></div>
+      </div>
+      <div class="actions">
+        <button class="btn btn-danger" onclick="resetAll()">🔄 Limpiar todas las sesiones</button>
+        <button class="btn btn-secondary" onclick="reindex()">📦 Forzar re-indexación</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Configuración de providers -->
+  <div class="card">
+    <div class="card-header">
+      <div class="icon" style="background:var(--cyan-dim);color:var(--cyan);">🤖</div>
+      <h2>Providers de LLM y Embeddings</h2>
+    </div>
+    <div class="card-body">
+      <div class="note warn">⚠️ Cambiar el proveedor de embeddings re-indexará el PDF automáticamente al guardar. El servicio seguirá disponible durante la re-indexación.</div>
+      <div class="grid-2">
+        <div class="row">
+          <label>LLM Provider</label>
+          <select id="llm_provider">
+            <option value="cohere" {"selected" if val("LLM_PROVIDER","cohere")=="cohere" else ""}>Cohere</option>
+            <option value="openai" {"selected" if val("LLM_PROVIDER","cohere")=="openai" else ""}>OpenAI</option>
+            <option value="anthropic" {"selected" if val("LLM_PROVIDER","cohere")=="anthropic" else ""}>Anthropic</option>
+            <option value="ollama" {"selected" if val("LLM_PROVIDER","cohere")=="ollama" else ""}>Ollama (local)</option>
+          </select>
+        </div>
+        <div class="row">
+          <label>Embedding Provider</label>
+          <select id="embedding_provider">
+            <option value="cohere" {"selected" if val("EMBEDDING_PROVIDER","cohere")=="cohere" else ""}>Cohere</option>
+            <option value="openai" {"selected" if val("EMBEDDING_PROVIDER","cohere")=="openai" else ""}>OpenAI</option>
+            <option value="ollama" {"selected" if val("EMBEDDING_PROVIDER","cohere")=="ollama" else ""}>Ollama (local)</option>
+          </select>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="grid-2">
+        <div class="row"><label>Modelo LLM (opcional)</label><input type="text" id="llm_model" value="{val("COHERE_MODEL") or val("OPENAI_MODEL") or val("ANTHROPIC_MODEL") or val("OLLAMA_MODEL","")}" placeholder="usa el modelo por defecto"></div>
+        <div class="row"><label>Modelo Embeddings (opcional)</label><input type="text" id="emb_model" value="{val("COHERE_EMBEDDING_MODEL") or val("OPENAI_EMBEDDING_MODEL") or val("OLLAMA_EMBEDDING_MODEL","")}" placeholder="usa el modelo por defecto"></div>
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary" onclick="saveProviders()">💾 Guardar providers</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- API Keys -->
+  <div class="card">
+    <div class="card-header">
+      <div class="icon" style="background:var(--yellow-dim);color:var(--yellow);">🔑</div>
+      <h2>API Keys</h2>
+    </div>
+    <div class="card-body">
+      <div class="grid-2">
+        <div class="row"><label>Cohere API Key</label><input type="password" id="cohere_key" value="{val("COHERE_API_KEY","")}" placeholder="sk-..."></div>
+        <div class="row"><label>OpenAI API Key</label><input type="password" id="openai_key" value="{val("OPENAI_API_KEY","")}" placeholder="sk-..."></div>
+        <div class="row"><label>Anthropic API Key</label><input type="password" id="anthropic_key" value="{val("ANTHROPIC_API_KEY","")}" placeholder="sk-ant-..."></div>
+        <div class="row"><label>Ollama Base URL</label><input type="text" id="ollama_url" value="{val("OLLAMA_BASE_URL","http://localhost:11434")}" placeholder="http://localhost:11434"></div>
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary" onclick="saveKeys()">💾 Guardar API Keys</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ajustes visuales del chat -->
+  <div class="card">
+    <div class="card-header">
+      <div class="icon" style="background:var(--cyan-dim);color:var(--cyan);">🎨</div>
+      <h2>Ajustes del chat</h2>
+    </div>
+    <div class="card-body">
+      <div class="grid-2">
+        <div class="row"><label>Nombre de la clínica</label><input type="text" id="clinic_name" value="{val("CLINIC_NAME","Clínica MediSalud")}" placeholder="Clínica MediSalud"></div>
+        <div class="row"><label>Branding (sidebar footer)</label><input type="text" id="branding" value="{val("BRANDING","Powered by Cybernexus")}" placeholder="Powered by ..."></div>
+        <div class="row"><label>Teléfono de contacto</label><input type="text" id="clinic_phone" value="{val("CLINIC_PHONE","+56 2 2345 6789")}" placeholder="+56 2 ..."></div>
+        <div class="row"><label>Sitio web</label><input type="text" id="clinic_web" value="{val("CLINIC_WEB","www.medisalud.cl")}" placeholder="www..."></div>
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary" onclick="saveVisual()">💾 Guardar ajustes visuales</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Credenciales admin -->
+  <div class="card">
+    <div class="card-header">
+      <div class="icon" style="background:var(--red-dim);color:var(--red);">🔐</div>
+      <h2>Credenciales de administrador</h2>
+    </div>
+    <div class="card-body">
+      <div class="grid-2">
+        <div class="row"><label>Usuario admin</label><input type="text" id="admin_user" value="{val("ADMIN_USER","admin")}"></div>
+        <div class="row"><label>Contraseña admin</label><input type="password" id="admin_pass" value="{val("ADMIN_PASS","medisalud2024")}"></div>
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary" onclick="saveAdmin()">💾 Guardar credenciales</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  function showToast(msg, error=false) {{
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast' + (error ? ' error' : '') + ' show';
+    setTimeout(() => t.className = 'toast', 3000);
+  }}
+
+  async function post(url, body) {{
+    const r = await fetch(url, {{method:'POST', headers:{{'Content-Type':'application/json'}}, body: JSON.stringify(body)}});
+    return r.json();
+  }}
+
+  async function resetAll() {{
+    if (!confirm('¿Limpiar todas las sesiones activas?')) return;
+    const r = await post('/admin/action', {{action:'reset_sessions'}});
+    showToast(r.message);
+  }}
+
+  async function reindex() {{
+    if (!confirm('¿Forzar re-indexación del PDF? Puede tomar unos segundos.')) return;
+    showToast('Re-indexando...');
+    const r = await post('/admin/action', {{action:'reindex'}});
+    showToast(r.message, !r.ok);
+  }}
+
+  async function saveProviders() {{
+    const body = {{
+      LLM_PROVIDER: document.getElementById('llm_provider').value,
+      EMBEDDING_PROVIDER: document.getElementById('embedding_provider').value,
+    }};
+    const model = document.getElementById('llm_model').value.trim();
+    const emb = document.getElementById('emb_model').value.trim();
+    if (model) body[body.LLM_PROVIDER.toUpperCase()+'_MODEL'] = model;
+    if (emb) body[body.EMBEDDING_PROVIDER.toUpperCase()+'_EMBEDDING_MODEL'] = emb;
+    const r = await post('/admin/env', body);
+    showToast(r.message, !r.ok);
+  }}
+
+  async function saveKeys() {{
+    const r = await post('/admin/env', {{
+      COHERE_API_KEY: document.getElementById('cohere_key').value,
+      OPENAI_API_KEY: document.getElementById('openai_key').value,
+      ANTHROPIC_API_KEY: document.getElementById('anthropic_key').value,
+      OLLAMA_BASE_URL: document.getElementById('ollama_url').value,
+    }});
+    showToast(r.message, !r.ok);
+  }}
+
+  async function saveVisual() {{
+    const r = await post('/admin/env', {{
+      CLINIC_NAME: document.getElementById('clinic_name').value,
+      BRANDING: document.getElementById('branding').value,
+      CLINIC_PHONE: document.getElementById('clinic_phone').value,
+      CLINIC_WEB: document.getElementById('clinic_web').value,
+    }});
+    showToast(r.message, !r.ok);
+  }}
+
+  async function saveAdmin() {{
+    const r = await post('/admin/env', {{
+      ADMIN_USER: document.getElementById('admin_user').value,
+      ADMIN_PASS: document.getElementById('admin_pass').value,
+    }});
+    showToast(r.message, !r.ok);
+  }}
+
+  function toggleTheme() {{
+    const root = document.documentElement;
+    root.dataset.theme = root.dataset.theme === 'dark' ? 'light' : 'dark';
+  }}
+</script>
+</body>
+</html>"""
+
+
+@app.post("/admin/env")
+def admin_save_env(request: Request, data: dict, _=Depends(require_admin)):
+    global _retriever, _llm, _sessions
+    if not ENV_FILE.exists():
+        ENV_FILE.write_text("")
+    for key, value in data.items():
+        if value:
+            set_key(str(ENV_FILE), key, value)
+            os.environ[key] = value
+    # Reset recursos para que se recarguen con la nueva config
+    _retriever = None
+    _llm = None
+    _sessions.clear()
+    return {"ok": True, "message": "✅ Guardado. Los cambios se aplicarán en el próximo request."}
+
+
+@app.post("/admin/action")
+async def admin_action(request: Request, _=Depends(require_admin)):
+    global _retriever, _llm, _sessions
+    body = await request.json()
+    action = body.get("action")
+
+    if action == "reset_sessions":
+        count = len(_sessions)
+        _sessions.clear()
+        return {"ok": True, "message": f"✅ {count} sesiones limpiadas."}
+
+    elif action == "reindex":
+        try:
+            from agent import build_embeddings, get_embedding_key
+            embeddings = build_embeddings()
+            key = get_embedding_key()
+            from ingest import ingest
+            ingest(embeddings=embeddings, embedding_key=key)
+            _retriever = None
+            _llm = None
+            _sessions.clear()
+            return {"ok": True, "message": f"✅ Re-indexación completada con '{key}'."}
+        except Exception as e:
+            return {"ok": False, "message": f"❌ Error: {str(e)}"}
+
+    return {"ok": False, "message": "Acción desconocida."}
+
+
 @app.get("/health")
 def health():
     from agent import _get_provider, get_embedding_key

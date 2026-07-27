@@ -1,18 +1,26 @@
 """
 Servidor FastAPI que expone el agente RAG como API HTTP
-con interfaz web y memoria de conversación por sesión.
+con interfaz web, memoria de conversación por sesión y panel de administración.
 """
 import os
 import uuid
-from fastapi import FastAPI, Cookie, Response
+import json
+from pathlib import Path
+from fastapi import FastAPI, Cookie, Response, Request, Depends, HTTPException
 from fastapi.responses import HTMLResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel
-from dotenv import load_dotenv
+from dotenv import load_dotenv, set_key, dotenv_values
 from agent import build_agent, build_session_chain
 
 load_dotenv()
 
 app = FastAPI(title="Asistente MediSalud")
+security = HTTPBasic()
+
+ADMIN_USER = os.getenv("ADMIN_USER", "admin")
+ADMIN_PASS = os.getenv("ADMIN_PASS", "medisalud2024")
+ENV_FILE = Path(".env")
 
 # Recursos compartidos (embeddings + LLM se cargan una sola vez)
 _retriever = None
@@ -27,6 +35,12 @@ def get_shared_resources():
     if _retriever is None:
         _retriever, _llm = build_agent()
     return _retriever, _llm
+
+
+def require_admin(credentials: HTTPBasicCredentials = Depends(security)):
+    if credentials.username != ADMIN_USER or credentials.password != ADMIN_PASS:
+        raise HTTPException(status_code=401, detail="Credenciales incorrectas",
+                            headers={"WWW-Authenticate": "Basic"})
 
 
 def get_session_chain(session_id: str):
@@ -897,4 +911,10 @@ def reset(response: Response, session_id: str = Cookie(default=None)):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "sessions": len(_sessions)}
+    from agent import _get_provider, get_embedding_key
+    return {
+        "status": "ok",
+        "sessions": len(_sessions),
+        "llm_provider": _get_provider("LLM_PROVIDER"),
+        "embedding_provider": get_embedding_key(),
+    }

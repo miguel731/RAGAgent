@@ -1,29 +1,52 @@
 """
-Agente RAG: carga el vector store FAISS y construye la cadena de recuperación
-con Cohere (command-r-plus) para responder preguntas sobre la clínica.
+Agente RAG con memoria de conversación: carga el vector store FAISS y construye
+la cadena de recuperación con Cohere (command-r-plus-08-2024).
+
+Cada sesión mantiene su propio historial en memoria para que el LLM pueda
+resolver referencias al contexto previo ("¿y eso?", "¿cuánto cuesta eso?").
 """
 import os
 from dotenv import load_dotenv
 from langchain_cohere import CohereEmbeddings, ChatCohere
 from langchain_community.vectorstores import FAISS
-from langchain.chains import RetrievalQA
+from langchain.chains import ConversationalRetrievalChain
+from langchain.memory import ConversationBufferWindowMemory
 from langchain.prompts import PromptTemplate
 
 load_dotenv()
 
 VECTORSTORE_PATH = "vectorstore"
 
-PROMPT_TEMPLATE = """Eres un asistente virtual de la Clínica MediSalud. Responde las preguntas
-de los pacientes de forma clara, amable y precisa, basándote únicamente en la información
-proporcionada en el contexto. Si la respuesta no está en el contexto, indícalo honestamente
-y sugiere que el paciente contacte a la clínica directamente.
+# Prompt para condensar la pregunta usando el historial antes de buscar en FAISS
+CONDENSE_PROMPT = PromptTemplate.from_template(
+    """Dado el historial de conversación y la pregunta de seguimiento, reformula
+la pregunta de seguimiento como una pregunta independiente y completa en español.
+Si la pregunta ya es independiente, devuélvela tal cual.
 
-Contexto:
+Historial:
+{chat_history}
+
+Pregunta de seguimiento: {question}
+Pregunta reformulada:"""
+)
+
+# Prompt final para generar la respuesta con contexto del documento
+QA_PROMPT = PromptTemplate.from_template(
+    """Eres el asistente virtual de la Clínica MediSalud. Responde de forma clara,
+amable y precisa basándote únicamente en el contexto proporcionado.
+Si la respuesta no está en el contexto, dilo honestamente y sugiere contactar
+a la clínica directamente al +56 2 2345 6789 o en www.medisalud.cl.
+
+Contexto del documento:
 {context}
 
-Pregunta: {question}
+Historial de la conversación:
+{chat_history}
+
+Pregunta actual: {question}
 
 Respuesta:"""
+)
 
 
 def build_agent():
@@ -44,16 +67,24 @@ def build_agent():
         temperature=0.1,
     )
 
-    prompt = PromptTemplate(
-        template=PROMPT_TEMPLATE,
-        input_variables=["context", "question"],
-    )
+    return retriever, llm
 
-    chain = RetrievalQA.from_chain_type(
+
+def build_session_chain(retriever, llm):
+    """Crea una cadena con memoria independiente por sesión."""
+    memory = ConversationBufferWindowMemory(
+        k=6,                          # últimos 6 intercambios
+        memory_key="chat_history",
+        return_messages=True,
+        output_key="answer",
+    )
+    chain = ConversationalRetrievalChain.from_llm(
         llm=llm,
-        chain_type="stuff",
         retriever=retriever,
+        memory=memory,
         return_source_documents=True,
-        chain_type_kwargs={"prompt": prompt},
+        condense_question_prompt=CONDENSE_PROMPT,
+        combine_docs_chain_kwargs={"prompt": QA_PROMPT},
+        verbose=False,
     )
     return chain

@@ -1,25 +1,39 @@
 """
 Servidor FastAPI que expone el agente RAG como API HTTP
-con una interfaz web mínima para chatear.
+con interfaz web y memoria de conversación por sesión.
 """
 import os
-from fastapi import FastAPI
+import uuid
+from fastapi import FastAPI, Cookie, Response
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
-from agent import build_agent
+from agent import build_agent, build_session_chain
 
 load_dotenv()
 
 app = FastAPI(title="Asistente MediSalud")
 
-_chain = None
+# Recursos compartidos (embeddings + LLM se cargan una sola vez)
+_retriever = None
+_llm = None
 
-def get_chain():
-    global _chain
-    if _chain is None:
-        _chain = build_agent()
-    return _chain
+# Cadenas con memoria: una por session_id
+_sessions: dict = {}
+
+
+def get_shared_resources():
+    global _retriever, _llm
+    if _retriever is None:
+        _retriever, _llm = build_agent()
+    return _retriever, _llm
+
+
+def get_session_chain(session_id: str):
+    if session_id not in _sessions:
+        retriever, llm = get_shared_resources()
+        _sessions[session_id] = build_session_chain(retriever, llm)
+    return _sessions[session_id]
 
 
 class Pregunta(BaseModel):
@@ -825,7 +839,8 @@ HTML = """<!DOCTYPE html>
     sendMessage(text);
   }
 
-  function clearChat() {
+  async function clearChat() {
+    await fetch('/reset', { method: 'POST' });
     messagesEl.innerHTML = `<div class="welcome" id="welcome">
       <div class="welcome-icon">
         <svg viewBox="0 0 24 24" fill="white"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
@@ -856,16 +871,30 @@ def index():
 
 
 @app.post("/preguntar")
-def preguntar(body: Pregunta):
-    chain = get_chain()
-    result = chain.invoke({"query": body.texto})
+def preguntar(body: Pregunta, response: Response, session_id: str = Cookie(default=None)):
+    if not session_id:
+        session_id = str(uuid.uuid4())
+        response.set_cookie("session_id", session_id, max_age=3600, samesite="lax")
+
+    chain = get_session_chain(session_id)
+    result = chain.invoke({"question": body.texto})
+
     fuentes = sorted(set(
-        f"página {d.metadata.get('page', 0) + 1}"
+        f"pág. {d.metadata.get('page', 0) + 1}"
         for d in result.get("source_documents", [])
     ))
-    return {"respuesta": result["result"], "fuentes": fuentes}
+    return {"respuesta": result["answer"], "fuentes": fuentes, "session_id": session_id}
+
+
+@app.post("/reset")
+def reset(response: Response, session_id: str = Cookie(default=None)):
+    if session_id and session_id in _sessions:
+        del _sessions[session_id]
+    new_id = str(uuid.uuid4())
+    response.set_cookie("session_id", new_id, max_age=3600, samesite="lax")
+    return {"session_id": new_id}
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "sessions": len(_sessions)}

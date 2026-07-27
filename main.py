@@ -1,11 +1,11 @@
 """
-Punto de entrada del agente RAG de Clínica MediSalud.
-Interfaz de línea de comandos para hacer preguntas al agente.
+Punto de entrada CLI del agente RAG de Clínica MediSalud.
+Mantiene memoria de conversación dentro de la sesión.
 
 Uso:
     python main.py
 """
-from agent import build_agent
+from agent import build_agent, build_session_chain
 
 
 def main():
@@ -16,7 +16,8 @@ def main():
     print()
 
     print("Cargando agente...")
-    chain = build_agent()
+    retriever, llm = build_agent()
+    chain = build_session_chain(retriever, llm)
     print("Agente listo. Puedes hacer tus preguntas.\n")
 
     while True:
@@ -27,17 +28,17 @@ def main():
             print("¡Hasta pronto!")
             break
 
-        result = chain.invoke({"query": pregunta})
-        respuesta = result["result"]
+        result = chain.invoke({"question": pregunta})
+        respuesta = result["answer"]
 
-        fuentes = set()
-        for doc in result.get("source_documents", []):
-            page = doc.metadata.get("page", 0)
-            fuentes.add(f"página {page + 1}")
+        fuentes = sorted(set(
+            f"pág. {d.metadata.get('page', 0) + 1}"
+            for d in result.get("source_documents", [])
+        ))
 
         print(f"\nAsistente: {respuesta}")
         if fuentes:
-            print(f"[Fuentes: {', '.join(sorted(fuentes))}]")
+            print(f"[Fuentes: {', '.join(fuentes)}]")
         print()
 
 

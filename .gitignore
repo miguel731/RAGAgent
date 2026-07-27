@@ -1,6 +1,22 @@
+# Secretos y entorno
 .env
 .venv/
+
+# Generados en tiempo de ejecución
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+vectorstore/
+
+# Archivos de desarrollo interno (no parte del entregable)
+CLAUDE.md
+plan.md
+create_pdf.py
+Eleccion*
+Entregables*
+Introduccion*
+
+# Sistema operativo
 .DS_Store
+Thumbs.db

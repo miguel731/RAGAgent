@@ -643,7 +643,7 @@ HTML = """<!DOCTYPE html>
   </div>
 
   <div class="sidebar-footer">
-    Powered por RAG + Cohere<br>
+    Powered by Cybernexus<br>
     Documentación interna · Clínica MediSalud
   </div>
 </aside>

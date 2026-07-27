@@ -1,115 +1,109 @@
 # Plan del Proyecto: Alura Agente RAG - Clínica de Salud
 
 ## Stack Definido
-- **LLM**: Cohere (`command-r-plus` via `langchain-cohere`)
-- **Embeddings**: Cohere Embeddings (`embed-multilingual-v3.0`)
+- **LLM**: Cohere `command-r-plus-08-2024` (via `langchain-cohere`)
+- **Embeddings**: Cohere `embed-multilingual-v3.0`
 - **Vector Store**: FAISS (local, sin servidor)
+- **Memoria**: `ConversationBufferWindowMemory` (k=6, por sesión vía cookie)
 - **Framework**: LangChain
-- **Documentos**: PDF generado con contenido de clínica médica
-- **Deploy**: OCI Compute (Etapa 3)
+- **API**: FastAPI + Uvicorn
+- **Documento fuente**: `data/clinica_salud.pdf` (5 páginas, generado con fpdf2)
+- **Deploy**: Hetzner Cloud — Docker en puerto 3100
+- **Branding**: Powered by Cybernexus
 
 ---
 
 ## Estado General
 - [x] Etapa 1: Documento e Ingesta
 - [x] Etapa 2: Agente RAG Local
-- [ ] Etapa 3: Deploy en la Nube
+- [x] Etapa 3: Deploy en la Nube
 - [ ] Etapa 4: Documentación Final (README)
 
 ---
 
-## Etapa 1: Documento e Ingesta
+## Etapa 1: Documento e Ingesta ✅
 
-**Objetivo:** Crear el documento fuente y construir el pipeline que lo lee, fragmenta, embebe y guarda en FAISS.
+**Completada.**
 
-### Tareas
-- [ ] Crear `data/clinica_salud.pdf` — documento PDF con 5 secciones:
-  - Política de privacidad de datos del paciente
-  - Preguntas frecuentes sobre consultas y turnos
-  - Política de cancelaciones y reagendamiento
-  - Guía de convenios y coberturas médicas
-  - Instrucciones pre y post consulta
-- [ ] Crear `requirements.txt` con dependencias
-- [ ] Crear `ingest.py`:
-  - Leer el PDF con PyPDF (`PyPDFLoader` de LangChain)
-  - Dividir en chunks con `RecursiveCharacterTextSplitter` (chunk_size=500, overlap=50)
-  - Generar embeddings con `CohereEmbeddings`
-  - Guardar en `vectorstore/` con FAISS
-- [ ] Crear `.env.example` con `COHERE_API_KEY=`
-- [ ] Verificar ingesta con búsqueda de prueba (similarity search)
+### Lo que se hizo
+- `create_pdf.py` genera `data/clinica_salud.pdf` con 5 secciones usando fpdf2 + fuente DejaVuSans (UTF-8)
+- `requirements.txt` con dependencias fijadas a versiones compatibles
+- `ingest.py` carga el PDF con `PyPDFLoader`, fragmenta con `RecursiveCharacterTextSplitter` (chunk_size=500, overlap=50), genera embeddings con `CohereEmbeddings` y guarda en `vectorstore/` con FAISS
+- `.env.example` y `.gitignore` configurados
+- Resultado: 5 páginas → 29 fragmentos → vectorstore FAISS guardado en disco
 
-### Archivos a crear
+### Archivos creados
 ```
-RAGAgent/
-├── requirements.txt
-├── .env.example
-├── .gitignore
-├── data/
-│   └── clinica_salud.pdf
-├── ingest.py
-└── vectorstore/           ← generado al correr ingest.py (ignorado en git)
+data/clinica_salud.pdf
+requirements.txt
+.env.example
+.gitignore
+ingest.py
+create_pdf.py
+vectorstore/
 ```
 
 ---
 
-## Etapa 2: Agente RAG Local
+## Etapa 2: Agente RAG Local ✅
 
-**Objetivo:** Construir el agente con LangChain + Cohere que responda preguntas usando el vector store.
+**Completada.**
 
-### Tareas
-- [ ] Crear `agent.py`:
-  - Cargar el vector store FAISS
-  - Configurar `CohereRerank` para reranking (opcional, mejora calidad)
-  - Armar cadena RAG: retriever → prompt → `ChatCohere` (`command-r-plus`)
-  - Usar `RetrievalQA` o `create_retrieval_chain`
-- [ ] Crear `main.py`:
-  - Loop de preguntas por línea de comandos
-  - Imprimir respuesta + fuentes (página del PDF)
-- [ ] Probar con al menos 5 preguntas distintas y documentar las respuestas
+### Lo que se hizo
+- `agent.py`: carga FAISS, construye retriever (k=3), inicializa `ChatCohere` y `ConversationalRetrievalChain` con `ConversationBufferWindowMemory` (k=6 intercambios)
+- Dos prompts: `CONDENSE_PROMPT` (reformula la pregunta con historial) y `QA_PROMPT` (genera respuesta con contexto del documento + historial)
+- `build_agent()` retorna retriever y LLM compartidos; `build_session_chain()` crea una cadena con memoria independiente por sesión
+- `main.py`: CLI interactiva con memoria de sesión
+- Probado con preguntas directas y de seguimiento con referencias implícitas ("¿Y para laboratorio?", "¿Y si llego tarde?")
 
-### Archivos a crear
+### Archivos creados
 ```
-RAGAgent/
-├── agent.py
-└── main.py
+agent.py
+main.py
 ```
 
 ---
 
-## Etapa 3: Deploy en la Nube
+## Etapa 3: Deploy en la Nube ✅
 
-**Objetivo:** Contenerizar y desplegar en OCI Compute (o alternativa: Railway / Render).
+**Completada.**
 
-### Tareas
-- [ ] Crear `Dockerfile`
-- [ ] Probar imagen localmente
-- [ ] Provisionar instancia OCI (o plataforma alternativa)
-- [ ] Configurar variable `COHERE_API_KEY` en el servidor
-- [ ] Exponer el agente (puerto o URL pública)
-- [ ] Capturar evidencia (screenshot o link)
+### Lo que se hizo
+- `app.py`: servidor FastAPI con:
+  - `GET /` — interfaz web de chat (HTML inline, dark/light theme, sidebar con quick questions)
+  - `POST /preguntar` — endpoint RAG con memoria por sesión (cookie `session_id`)
+  - `POST /reset` — limpia memoria y genera nueva sesión
+  - `GET /health` — health check con conteo de sesiones activas
+- Sesiones: `session_id` via cookie HTTP, un `ConversationalRetrievalChain` por sesión en dict en memoria
+- UI: diseño 2026 — dark mode por defecto, toggle light/dark, sidebar con sugerencias, typing indicator animado, chips de fuente en cada respuesta
+- Branding: "Powered by Cybernexus"
+- `Dockerfile`: imagen `python:3.12-slim`, copia vectorstore pre-generado (no regenera en build)
+- Deploy: Hetzner Cloud, puerto 3100, `--restart unless-stopped`
 
-### Archivos a crear
+**URL pública:** `http://46.62.245.242:3100`
+
+### Archivos creados
 ```
-RAGAgent/
-└── Dockerfile
+app.py
+Dockerfile
 ```
 
 ---
 
-## Etapa 4: Documentación Final
+## Etapa 4: Documentación Final ⏳
 
-**Objetivo:** Repositorio listo para evaluación.
+**Pendiente.**
 
 ### Tareas
 - [ ] Escribir `README.md` con:
   - [ ] Descripción del proyecto
-  - [ ] Diagrama de arquitectura (texto/ASCII)
+  - [ ] Diagrama de arquitectura (ASCII)
   - [ ] Tecnologías utilizadas
   - [ ] Instrucciones de ejecución local
   - [ ] 5+ ejemplos de preguntas y respuestas
-  - [ ] Evidencia del deploy (link o screenshot)
+  - [ ] Evidencia del deploy (link + screenshot)
 - [ ] Revisar historial de commits
-- [ ] Confirmar que el repositorio es público en GitHub
+- [ ] Confirmar que el repositorio sea público en GitHub
 
 ---
 
@@ -117,19 +111,33 @@ RAGAgent/
 
 ```
 RAGAgent/
-├── CLAUDE.md
-├── README.md
-├── plan.md
+├── README.md              ← pendiente
 ├── requirements.txt
 ├── .env.example
 ├── .gitignore
 ├── data/
 │   └── clinica_salud.pdf
 ├── ingest.py
+├── create_pdf.py
 ├── agent.py
 ├── main.py
+├── app.py
 ├── Dockerfile
 └── vectorstore/           ← en .gitignore
+```
+
+### Archivos excluidos del repo (solo desarrollo/servidor)
+```
+.env
+.venv/
+__pycache__/
+vectorstore/
+CLAUDE.md
+plan.md
+Eleccion de desafio.md
+Entregables del desafio,md
+Introduccion Desafio.md
+create_pdf.py
 ```
 
 ---
@@ -138,4 +146,4 @@ RAGAgent/
 1. Nunca intentar el deploy antes de que el agente funcione 100% local
 2. Cada etapa tiene su propio commit antes de pasar a la siguiente
 3. El `.env` real nunca entra al repositorio
-4. El `vectorstore/` se genera localmente y no se sube a git
+4. El `vectorstore/` se copia a la imagen Docker pero no se sube a git

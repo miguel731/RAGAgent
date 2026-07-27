@@ -11,8 +11,8 @@
 ---
 
 ## Estado General
-- [ ] Etapa 1: Documento e Ingesta
-- [ ] Etapa 2: Agente RAG Local
+- [x] Etapa 1: Documento e Ingesta
+- [x] Etapa 2: Agente RAG Local
 - [ ] Etapa 3: Deploy en la Nube
 - [ ] Etapa 4: Documentación Final (README)
 

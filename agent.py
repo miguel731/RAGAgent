@@ -39,7 +39,7 @@ def build_agent():
     retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
 
     llm = ChatCohere(
-        model="command-r-plus",
+        model="command-r-plus-08-2024",
         cohere_api_key=os.environ["COHERE_API_KEY"],
         temperature=0.1,
     )

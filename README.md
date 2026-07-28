@@ -2,8 +2,8 @@
 
 Agente de inteligencia artificial con RAG (Retrieval-Augmented Generation) que responde preguntas en lenguaje natural sobre la documentación interna de la Clínica MediSalud.
 
-**Demo en vivo:** http://46.62.245.242:3100
-**Panel de administración:** http://46.62.245.242:3100/admin
+**Demo en vivo:** https://medisalud.cybernexus.cl
+**Panel de administración:** https://medisalud.cybernexus.cl/admin
 
 ---
 
@@ -208,7 +208,7 @@ RAGAgent/
 
 ## Deploy en producción
 
-El agente está desplegado en Hetzner Cloud en `http://46.62.245.242:3100`.
+El agente está desplegado en Hetzner Cloud en `https://medisalud.cybernexus.cl`.
 
 Pasos para replicar en cualquier servidor con Docker:
 

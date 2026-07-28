@@ -894,7 +894,7 @@ def preguntar(body: Pregunta, response: Response, session_id: str = Cookie(defau
     result = chain.invoke({"question": body.texto})
 
     fuentes = sorted(set(
-        f"pág. {d.metadata.get('page', 0) + 1}"
+        f"{d.metadata.get('source', 'doc')} pág. {d.metadata.get('page', 0) + 1}"
         for d in result.get("source_documents", [])
     ))
     return {"respuesta": result["answer"], "fuentes": fuentes, "session_id": session_id}

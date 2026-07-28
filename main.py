@@ -32,7 +32,7 @@ def main():
         respuesta = result["answer"]
 
         fuentes = sorted(set(
-            f"pág. {d.metadata.get('page', 0) + 1}"
+            f"{d.metadata.get('source', 'doc')} pág. {d.metadata.get('page', 0) + 1}"
             for d in result.get("source_documents", [])
         ))
 

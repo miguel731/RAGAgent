@@ -208,7 +208,7 @@ RAGAgent/
 
 ## Deploy en producción
 
-El agente está desplegado en Hetzner Cloud en `https://medisalud.cybernexus.cl`.
+El agente está desplegado en Hetzner Cloud.
 
 Pasos para replicar en cualquier servidor con Docker:
 
